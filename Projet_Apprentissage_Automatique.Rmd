@@ -1,0 +1,549 @@
+---
+title: "PROJET Apprentissage Automatique"
+author: "Pape Daouda WADE et Thomas PERRON"
+date: ' 28 fevrier 2019'
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# LA LISTE DES PAQUETS UTILISÉS
+```{r}
+library(ggplot2)# pour les graphs
+library(tidyr) # pour les NA
+library(forcats)# pour la manipulation des facteurs
+library(randomForest)# algo de prediction
+library(dplyr)# pour les filtre
+library(readr) # pour la fonction write_csv
+```
+
+# PRESENTATION DU PROJET
+Rossmann Store Sales est projet de machine de learning qui consiste à predire les ventes du magasin.
+Nous disponsons des données historiques sur les ventes de 1 115 magasins Rossmann. La tâche consiste à prévoir la colonne ventes pour l'ensemble des elements du dataset tests.
+
+## Données disposées:
+### train.csv: données historiques incluant les ventes
+### test.csv  données historiques hors ventes
+### store.csv- informations supplémentaires sur les magasins
+
+# CHARGEMENT DES DONNÉES
+```{r}
+train <-read.csv("~/R/Apprentissate_Automatique/dataSet/train.csv")
+test <- read.csv("~/R/Apprentissate_Automatique/dataSet/test.csv")
+store <- read.csv("~/R/Apprentissate_Automatique/dataSet/store.csv")
+```
+
+#  PRETRAITEMENT DES DONNEES
+## Observation des données:
+### dataSet train.csv:
+```{r}
+train$Id <-c(1:1017209)
+# rajout d'une colonne Id dans train. #Id unique du store et de la data des ventes
+dim(train)# les dimension du dataSet train
+colnames(train)# nommes des colonnes
+#str(train)# types des attributs
+```
+
+
+```{r}
+head(train[,c(1:7)],5) # les premieres ligen du dataSet train et les types
+head(train[,c(7:10)],5) # les 5 dernieres lignes 
+```
+
+```{r}
+tail(train[,c(1:7)],5) # les 5 dernière lignes
+tail(train[,c(7:10)],5) # les 5 dernière lignes 
+```
+
+
+#### Remarque:
+Nous remarquons que la variable Date des sous format facteur.Les donnees ont été collecté entre 2013-01-01 et 2015-07-31.
+
+### dataSet test.csv
+
+```{r}
+dim(test)# les dimensions du dataSet test
+colnames(test)
+#test <-test[order(test$Store,test$Date),]# pour ranger en fonction du date et des id
+#str(test) # les types des attributs
+```
+
+```{r}
+head(test[,c(1:8)],5) # les 5 premieres lignes
+```
+
+```{r}
+tail(test[,c(1:7)],5) # les 5 dernière lignes
+tail(test[,c(7:8)],5) # les 5 dernière lignes
+```
+
+#### Remarque: 
+Nous remarquons les donnees ont été colléctées de 2015-08-01 à 2015-09-17.
+La colonne customers(nombre de client qui ont frequenté le magasin en une journée) est absente.
+
+### dataSet store.csv:
+```{r}
+dim(store)# les dimensions du dataSet store
+colnames(store) # les noms des colonnes
+#str(store)# les types des attributs
+```
+
+```{r}
+head(store[,c(1:7)],5) # les premieres ligen du dataSet store et les types
+head(store[,c(7:10)],5) # les 5 dernieres lignes 
+```
+
+```{r}
+tail(store[,c(1:7)],5) # les premieres ligen du dataSet store et les types
+tail(store[,c(7:10)],5) # les 5 dernieres lignes 
+```
+
+## Traitement des valeures manquantes
+
+### train
+```{r}
+n.na.train <-is.na(train) # le nombre de na dans train
+les.na.train <-apply(n.na.train, 2, sum) #la somme par ligne
+les.na.train
+les.na.train <-as.data.frame(les.na.train)
+
+```
+
+```{r}
+barplot(les.na.train$les.na.train, col = rainbow(5),names.arg= rownames(les.na.train),las=3)
+```
+#### Remarque: Il n'y a pas de veleur manquante dans train.csv
+
+### test
+
+```{r}
+n.na.test <-is.na(test) # le nombre de na dans train
+les.na.test <-apply(n.na.test, 2, sum) #la somme par ligne
+les.na.test
+les.na.test <-as.data.frame(les.na.test)
+```
+
+```{r valeure manquante test.csv}
+barplot(les.na.test$les.na.test, col = rainbow(5),names.arg= rownames(les.na.test),las=3)
+```
+
+Nous remarquons une dizaine de valeure manquante dans Open.
+```{r}
+test %>% filter(is.na(Open))# filtre des NA dans la colonnes Open
+test[is.na(test)] <-0 
+```
+```{r}
+test %>% filter(is.na(Open))# Nous verifions à nouveau
+```
+#### remarque:
+Nous avons considéré, que les magasins qui ont des valeurs manquantes dans Open comme fermés. Alors nous leur avons mis a 0.
+
+### store
+
+```{r}
+n.na.store <-is.na(store) # le nombre de na dans store
+les.na.store <-apply(n.na.store, 2, sum)#la somme par ligne
+les.na.store
+les.na.store <-as.data.frame(les.na.store)
+#
+```
+
+```{r}
+barplot(les.na.store$les.na.store, col = rainbow(5),names.arg= rownames(les.na.store),las=3)
+```
+#### Remarque:
+
+Nous remarquons que 544/1115 des donnees des colonnes Promo2SinceWeek, Promo2SinceYear, PromoInterval sont manquentes. soit 48,8 % du nombre de magasin. De meme 354/1115 des donnees des colonnes CompetitionOpenSinceMonth et CompetitionOpenSinceYear sont manquentes.
+Nous allons convertir les types des variables int qui designent des années en factor et considerer les valeurs manquante comme modalité par exemple "0000".
+Les valeure manquentes des semaine sont mis à 0.
+les Mois seront consideré comme une modalité apres convertion des variables en factor.
+
+```{r}
+store[is.na(store)] <- 0 # ramplacer par 0 les valeures manquentes
+```
+
+
+## Les variables Qualitatives
+
+### les types de magasin
+distingue 4 modèles de magasin différents: a, b, c, d
+```{r}
+d0 <-table(store$StoreType)/nrow(store)
+d0
+d0 <-as.data.frame(d0)
+d0$Var1 <-c("modèle a","modèle b","modèle c","modèle d")
+ggplot(d0) +geom_col(aes(x= d0$Var1,y= d0$Freq),fill = "darkblue", width = .5)
+```
+Les magasins de type a represente plus la moitier des magasins.
+
+### Assortment
+décrit un niveau de gamme: a = de base, b = supplémentaire, c = étendu
+```{r}
+d1 <-table(store$Assortment)/nrow(store)
+d1
+d1 <-as.data.frame(d1)
+d1$Var1 <-c("de base","supplémentaire","étendu")
+ggplot(d1) +geom_col(aes(x= d1$Var1,y= d1$Freq),fill = "darkblue", width = .5)
+```
+
+### PromoInterval
+
+décrit les intervalles consécutifs auxquels Promo2 est démarré, en nommant les mois de début de la promotion. Par exemple, "février, mai, août, novembre" signifie que chaque session commence en février, mai, août et novembre d'une année donnée pour ce magasin.
+```{r}
+d2 <-table(store$PromoInterval)/nrow(store)
+d2
+d2 <-as.data.frame(d2)
+#d2$Var1 <-c("de base","supplémentaire","étendu")
+ggplot(d2) +geom_col(aes(x= d2$Var1,y= d2$Freq),fill = "darkblue", width = .5)
+```
+
+### StateHoliday
+
+indique un jour férié. Normalement, tous les magasins, à quelques exceptions près, sont fermés les jours fériés. Notez que toutes les écoles sont fermées les jours fériés et les week-ends. a = jour férié, b = vacances de Pâques, c = Noël, 0 = néant
+
+```{r}
+d3 <-table(train$StateHoliday)/nrow(train)
+d3
+d3 <-as.data.frame(d3)
+d3$Var1 <-c("Néant","Jour de férié","Vacance paques","Noel")
+ggplot(d3) +geom_col(aes(x= d3$Var1,y= d3$Freq),fill = "darkblue", width = .5)
+```
+
+
+### Conversion en facteur les colonnes Promo2SinceYea & CompetitionOpenSinceYear
+```{r}
+#store$CompetitionOpenSinceYear <-as.factor(store$CompetitionOpenSinceYear)
+#store$Promo2SinceYear <-as.factor(store$Promo2SinceYea)
+```
+
+### Les levels des variables qualitatifs
+```{r}
+# dans train
+levels(train$StateHoliday)
+# dans test
+levels(test$StateHoliday)
+# dans store
+levels(store$StoreType)
+levels(store$Assortment)
+#levels(store$CompetitionOpenSinceYear)
+#levels(store$Promo2SinceYear)
+levels(store$PromoInterval)
+```
+### recodage des variables qualitatifs.
+Nous allons recoder les variables qualitatifs par des entiers. 
+Nous remarquons que 97 % des magasins n'ont pas de férié.
+Nous avons decidé de redéfinir le facteur en Néant =0 et férié=1 et convertire le facteur en entier.
+
+```{r recodage du State holiday}
+train$StateHoliday <-fct_recode(train$StateHoliday,"0" = "0","a" = "b","a" = "c")
+
+train$StateHoliday <-fct_recode(train$StateHoliday, "0" = "0", "1" = "a")
+test$StateHoliday <-fct_recode(test$StateHoliday, "0" = "0", "1" = "a")
+```
+
+```{r}
+store$StoreType <- fct_recode(store$StoreType,"1"= "a","2"="b","3"="c","4"= "d")
+store$Assortment <-fct_recode(store$Assortment,"1" = "a","2"  = "b","3" = "c")
+store$PromoInterval <-fct_recode(store$PromoInterval,
+                                  "4" = "",
+                                  "1" = "Feb,May,Aug,Nov", 
+                                  "2"="Jan,Apr,Jul,Oct",
+                                  "3"= "Mar,Jun,Sept,Dec")
+```
+
+```{r}
+#store$CompetitionOpenSinceYear <-fct_recode(store$CompetitionOpenSinceYear,"0000" = "0")
+#store$Promo2SinceYear <-fct_recode(store$Promo2SinceYear,"0000" = "0")
+```
+
+
+```{r}
+# conversion des attribus
+store$PromoInterval <-as.integer(store$PromoInterval)
+store$StoreType <- as.integer(store$StoreType)
+store$Assortment <- as.integer(store$Assortment)
+store$Store <-as.numeric(store$Store)
+```
+
+
+
+### conversion de la variables Date en type Date dans train et test
+```{r}
+test$Date <- as.Date(test$Date, format = "%Y-%m-%d")
+train$Date <- as.Date(train$Date, format = "%Y-%m-%d")
+```
+
+### Division de la variable date en 3 variables Day, month, Year 
+```{r}
+ # dans train
+train$Year=format(train$Date, format = "%Y")
+train$Month=format(train$Date, format = "%m")
+train$Day=format(train$Date, format = "%d") 
+ 
+# dans test
+test$Year=format(test$Date, format = "%Y")
+test$Month=format(test$Date, format = "%m")
+test$Day=format(test$Date, format = "%d") 
+
+```
+
+```{r}
+# convertir le format date en intier
+train$Year <-as.integer(format(train$Date, format = "%Y"))
+train$Month <- as.integer(format(train$Date, format = "%m"))
+train$Day <- as.integer(format(train$Date, format = "%d"))
+
+test$Year <- as.integer(format(test$Date, format = "%Y"))
+test$Month <-as.integer(format(test$Date, format = "%m"))
+test$Day <- as.integer(format(test$Date, format = "%d")) 
+```
+
+
+
+```{r}
+# vire les dates
+train <-train[,-c(4)]
+test <- test[,-c(4)]
+```
+
+```{r}
+test$Store <-as.numeric(test$Store)
+
+train$Store <-as.numeric(train$Store)
+train$Sales <-as.numeric(train$Sales)
+train$StateHoliday <-as.integer(train$StateHoliday)
+train$Customers <-as.numeric(train$Customers)
+train$Id <-as.numeric(train$Id)
+
+test$StateHoliday <-as.integer(test$StateHoliday)
+test$Open <-as.integer(test$Open)
+test$Id  <- as.numeric(test$Id)
+```
+
+
+### fussion des dataSets
+```{r}
+#store <- store[,c(1,2)]
+train <- merge(train,store,by="Store") # merger le train et store
+test <- merge(test,store,by="Store") # idem pour store
+```
+
+```{r}
+#str(train)
+#str(test)
+```
+
+```{r}
+#train <- train[ which(train$Open=='1'),]
+```
+
+
+### graphes de relation entre les variables
+```{r}
+#on tire au hasard 0.1 % des lignes de train :
+data1<- train %>% sample_frac(0.1)
+# plot des ventes en fonctions des types de magasins
+
+plot(train$Sales ~ train$StoreType, col = rainbow(4))
+plot(data1$Sales ~ data1$StoreType, col = rainbow(4))
+```
+
+
+```{r}
+plot(data1$Sales~data1$Store, col = rainbow(5))
+```
+
+```{r}
+#plot(train$Sales~train$Month, col = rainbow(12))
+ggplot(train, aes(y=train$Sales, x=train$Month)) + 
+    geom_bar(position="dodge", stat="identity")
+```
+
+```{r}
+plot(data1$Sales~data1$Customers, col = rainbow(2)) # une represention des ventes en fonction du nombre de client.
+cor(train$Sales,train$Customers, use = "complete.obs")
+```
+
+
+```{r}
+plot(data1$Sales~data1$Year, col = rainbow(5))
+```
+
+### base finale
+```{r}
+#train <-train[,-c(13,14,16,18,17)] #supprimer 
+#test <-test[,-c(12,13,15,16,17)]# idem dans test
+#train <-train[,-c(4)] #supprimer 
+#test <-test[,-c(4)]# idem dans test
+
+
+```
+
+### y'a t'il toujour des NA ?
+```{r}
+na2 <-is.na(test)
+na.bis2 <- is.na(train)
+apply(na2, 2, sum)
+apply(na.bis2, 2, sum)
+```
+
+
+### normalisation de la colonne CompetitionDistance
+```{r}
+#test$CompetitionDistance<- sapply(test$CompetitionDistance, function(x) x/max(test$CompetitionDistance))
+
+#htrain$CompetitionDistance<- sapply(train$CompetitionDistance, function(x) x/max(train$CompetitionDistance))
+
+```
+
+
+```{r}
+train <-train[order(train$Id),]
+test <-test[order(test$Id),]
+#on tire au hasard 0.1 % des lignes de train :
+train.bis<- train %>% sample_frac(0.2)
+```
+
+# Pour pouvoire verifier la fiabilité de notre modéle nous allons repartir la dataSet train en deux parties. train.app = 80 % train, test.app =20 % train
+# ```{r}
+# # repartition des data en test et train
+# ntot <-
+# data.app = sort(sample(nrow(train), nrow(train)*.7))
+# train.app<-train[data.app,]
+# test.app.<-train[-data.app,]
+
+# PHASE APPRENTISSAGE
+
+## LA REGRESSION MULTIVARIER
+
+### test 1:
+
+#### contruction du modele et training
+```{r}
+lm.sales <-lm(log(train$Sales +1)~., data = train[,-c(1,4,5,12)])
+summary(lm.sales)
+
+```
+
+```{r}
+# score = 43 %
+pred1 <- exp(predict(lm.sales, test))-1
+pred = (pred1)
+submission <- data.frame(Id=test$Id, Sales=pred)
+submission <- round(submission,digits = 0)
+submission <-submission[order(submission$Id),]
+write_csv(submission, "submission.csv")
+```
+
+```{r}
+lm.sales$coefficients
+```
+Remarque: precision 0.43089 soit 43 % de taux d'érreur
+
+### test 1: Nous avons virer les magasins fermés
+
+```{r}
+train.bis <- train %>% filter(train$Open == 1)
+#train[is.na(train),] <-1
+```
+
+#### contruction du modele et training
+```{r}
+lm.sales.bis <-lm(log(train.bis$Sales +2)~., data = train.bis[,-c(1,4,5,12)])
+summary(lm.sales.bis)
+```
+
+```{r}
+pred1.bis <- exp(predict(lm.sales.bis, test))-2
+pred.bis = (pred1.bis)
+submission.bis <- data.frame(Id=test$Id, Sales=pred.bis)
+submission.bis <- round(submission.bis,digits = 0)
+submission.bis <-submission.bis[order(submission.bis$Id),]
+write_csv(submission.bis, "submission.bis0.csv")
+```
+
+
+
+# RANDOMFOREST
+
+## TESTE 1:
+### l'apprentissage:
+```{r}
+forest.reg <- randomForest(train[,-c(1,4,5,12)], 
+                     log(train$Sales+1),
+                     mtry = 6,
+                     ntree = 20,
+                     sampsize=275000, 
+                     do.trace=TRUE,
+                     nodesize = 15
+                     )
+
+```
+
+### Contrainte d'erreur
+```{r}
+plot(forest.reg) # ntree = 100
+```
+### importance des variables 
+```{r}
+importance(forest.reg)
+varImpPlot(forest.reg, col = rainbow(20))
+```
+
+### la prediction
+```{r}
+pred.ran.forest <- exp(predict(forest.reg, test))-1
+predic = (pred.ran.forest)
+submission.r <- data.frame(Id=test$Id, Sales=predic)
+submission.r <- round(submission.r,digits = 0)
+submission.r <-submission.r[order(submission.r$Id),]
+write_csv(submission.r, "submission.random.forest.bis.csv")
+
+```
+
+## TESTE 2:
+
+Nous allons ajuster le modele en variant le nombre d'arbre.
+ntree=100
+### Apprentissage
+```{r}
+ forest.reg0 <- randomForest(train[,-c(1,4,5,12)], 
+                      log(train$Sales+1),
+                      mtry = 6,
+                      ntree = 100,
+                      sampsize=275000, 
+                      do.trace=TRUE,
+                      nodesize = 15
+                      )
+```
+### Contrainte d'erreur
+```{r}
+plot(forest.reg0) # ntree = 100
+```
+### importance des variables 
+```{r}
+importance(forest.reg0)
+varImpPlot(forest.reg0, col = rainbow(20))
+```
+### La prediction
+```{r}
+pred.ran.forest0 <- exp(predict(forest.reg0, test))-1
+predic0 = (pred.ran.forest0)
+submission.r0 <- data.frame(Id=test$Id, Sales=predic0)
+submission.r0 <- round(submission.r0,digits = 0)
+submission.r0 <-submission.r0[order(submission.r0$Id),]
+write_csv(submission.r0, "submission.random.fores0.csv")
+```
+
+
+
+
+
+
+
